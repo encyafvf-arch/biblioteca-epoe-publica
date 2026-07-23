@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import unicodedata
 import os
+import base64
 
 st.set_page_config(
     page_title="Catálogo de Biblioteca - EPOE",
@@ -9,10 +10,28 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilos formales de alto contraste
+# Buscar escudo de la EPOE
+def obtener_escudo(nombre_base):
+    if os.path.exists("."):
+        for f in os.listdir("."):
+            if f.lower() == nombre_base.lower():
+                return f
+    return None
+
+img_epoe = obtener_escudo("escudo_epoe.png")
+
+# Convertir imagen a base64 para renderizar centrado nativo perfecto
+img_html = ""
+if img_epoe:
+    with open(img_epoe, "rb") as image_file:
+        encoded_string = base64.b64encode(image_file.read()).decode()
+        img_html = f'<img src="data:image/png;base64,{encoded_string}" style="width: 120px; height: auto; display: block; margin: 0 auto 15px auto;">'
+
+# Estilos formales con centrado absoluto
 st.markdown("""
 <style>
-    .header-block {
+    .header-box {
+        width: 100%;
         text-align: center;
         margin-top: 10px;
         margin-bottom: 25px;
@@ -26,7 +45,6 @@ st.markdown("""
         font-family: 'Arial', sans-serif;
         text-transform: uppercase;
         letter-spacing: 1px;
-        margin-top: 15px;
     }
     .sub-header { 
         font-size: 1.15rem; 
@@ -35,32 +53,13 @@ st.markdown("""
         font-weight: 600;
         margin-top: 8px;
     }
-    div[data-testid="stImage"] > img {
-        display: block;
-        margin-left: auto;
-        margin-right: auto;
-    }
 </style>
 """, unsafe_allow_html=True)
 
-# Buscar escudo de la EPOE
-def obtener_escudo(nombre_base):
-    if os.path.exists("."):
-        for f in os.listdir("."):
-            if f.lower() == nombre_base.lower():
-                return f
-    return None
-
-img_epoe = obtener_escudo("escudo_epoe.png")
-
-# Encabezado Vertical Centrado
-if img_epoe:
-    col_izq, col_centro, col_der = st.columns([1, 2, 1])
-    with col_centro:
-        st.image(img_epoe, width=125)
-
-st.markdown("""
-<div class="header-block">
+# Encabezado 100% centrado en un único bloque
+st.markdown(f"""
+<div class="header-box">
+    {img_html}
     <div class="main-header">ESCUELA DE PERFECCIONAMIENTO DE OFICIALES DEL EJÉRCITO</div>
     <div class="sub-header">CONSULTA PÚBLICA DE CATÁLOGO BIBLIOGRÁFICO</div>
 </div>
