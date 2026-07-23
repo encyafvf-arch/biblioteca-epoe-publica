@@ -4,13 +4,18 @@ import unicodedata
 import os
 import base64
 
+# Configuración de página
 st.set_page_config(
-    page_title="Catálogo de Biblioteca - EPOE",
+    page_title="Consulta de Biblioteca - EPOE",
     page_icon="📚",
     layout="wide"
 )
 
-# Buscar escudo de la EPOE
+def quitar_tildes(texto):
+    if not isinstance(texto, str):
+        texto = str(texto)
+    return ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn').lower()
+
 def obtener_escudo(nombre_base):
     if os.path.exists("."):
         for f in os.listdir("."):
@@ -20,166 +25,123 @@ def obtener_escudo(nombre_base):
 
 img_epoe = obtener_escudo("escudo_epoe.png")
 
-# Convertir imagen a base64 para centrado nativo impecable
 img_html = ""
 if img_epoe:
     with open(img_epoe, "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode()
-        img_html = f'<img src="data:image/png;base64,{encoded_string}" style="width: 120px; height: auto; display: block; margin: 0 auto 15px auto;">'
+        img_html = f'<img src="data:image/png;base64,{encoded_string}" style="width: 100px; height: auto; display: block; margin: 0 auto 10px auto;">'
 
-# Estilos formales
 st.markdown("""
 <style>
     .header-box {
         width: 100%;
         text-align: center;
-        margin-top: 10px;
-        margin-bottom: 25px;
+        margin-top: 5px;
+        margin-bottom: 20px;
     }
     .main-header { 
-        font-size: 2rem; 
-        color: #FFFFFF !important; 
+        font-size: 1.8rem; 
+        color: #3182CE !important; 
         font-weight: 800; 
         text-align: center; 
-        line-height: 1.25;
+        line-height: 1.2;
         font-family: 'Arial', sans-serif;
         text-transform: uppercase;
-        letter-spacing: 1px;
     }
     .sub-header { 
-        font-size: 1.15rem; 
-        color: #D69E2E !important; 
+        font-size: 1.0rem; 
+        color: #A0AEC0 !important; 
         text-align: center; 
-        font-weight: 600;
-        margin-top: 8px;
+        font-weight: 500;
+        margin-top: 5px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Encabezado 100% centrado
 st.markdown(f"""
 <div class="header-box">
     {img_html}
     <div class="main-header">ESCUELA DE PERFECCIONAMIENTO DE OFICIALES DEL EJÉRCITO</div>
-    <div class="sub-header">CONSULTA PÚBLICA DE CATÁLOGO BIBLIOGRÁFICO</div>
+    <div class="sub-header">Consulta Pública de Catálogo Bibliográfico (EPOE)</div>
 </div>
 """, unsafe_allow_html=True)
 
 FILE_INVENTARIO = "inventario_libros-FABI.xlsx"
+FILE_HISTORICO = "historico_movimientos.xlsx"
 
-def quitar_tildes(texto):
-    if not isinstance(texto, str):
-        texto = str(texto)
-    return ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn').lower()
+# Cargar Inventario unificado exactamente igual a la app interna
+def cargar_inventario_definitivo():
+    archivos = [FILE_INVENTARIO, "inventario_libros.xlsx"]
+    for arch in archivos:
+        if os.path.exists(arch):
+            try:
+                df_raw = pd.read_excel(arch, sheet_name="Registro de Libros", header=None)
+                df_clean = df_raw.iloc[1:, 1:10].copy()
+                df_clean.columns = ['Código', 'Título del Libro', 'Autor', 'Colección', 'Tomo', 'Editorial', 'Categoría', 'Estado Local', 'Ubicación']
+                df_clean = df_clean.dropna(subset=['Título del Libro']).reset_index(drop=True)
+                df_clean = df_clean.fillna("-").astype(str)
+                return df_clean
+            except Exception:
+                pass
+    return pd.DataFrame()
 
-@st.cache_data(ttl=300)
-def cargar_catalogo_publico():
-    if os.path.exists(FILE_INVENTARIO):
+# Cargar préstamos activos directamente desde el archivo histórico
+def obtener_prestamos_activos():
+    if os.path.exists(FILE_HISTORICO):
         try:
-            df_raw = pd.read_excel(FILE_INVENTARIO, sheet_name="Registro de Libros", header=None)
-            
-            header_row = 2
-            for idx, row in df_raw.iterrows():
-                row_str = [str(val).lower() for val in row.values if pd.notna(val)]
-                if any("titulo" in item or "título" in item or "autor" in item for item in row_str):
-                    header_row = idx
-                    break
-            
-            df = pd.read_excel(FILE_INVENTARIO, sheet_name="Registro de Libros", header=header_row)
-            df.columns = [str(c).strip() for c in df.columns]
-            
-            col_titulo = next((c for c in df.columns if any(k in c.lower() for k in ["titulo", "título"]) and "codigo" not in c.lower()), None)
-            col_autor = next((c for c in df.columns if "autor" in c.lower()), None)
-            col_categoria = next((c for c in df.columns if any(k in c.lower() for k in ["categor", "tema", "genero", "género"])), None)
-            col_editorial = next((c for c in df.columns if "editor" in c.lower()), None)
-            col_estado = next((c for c in df.columns if "estado" in c.lower()), None)
-            
-            cols = list(df.columns)
-            
-            if not col_titulo or "LIB-" in str(df[col_titulo].iloc[0]):
-                for c in cols:
-                    val_sample = str(df[c].iloc[0]) if len(df) > 0 else ""
-                    if "LIB-" not in val_sample and len(val_sample) > 5 and c != col_autor:
-                        col_titulo = c
-                        break
-                        
-            df_limpio = pd.DataFrame()
-            
-            df_limpio["Título del Libro"] = df[col_titulo] if col_titulo else df.iloc[:, 2]
-            df_limpio["Autor(es)"] = df[col_autor] if col_autor else df.iloc[:, 3]
-            df_limpio["Categoría / Género"] = df[col_categoria] if col_categoria else df.iloc[:, 4]
-            df_limpio["Editorial"] = df[col_editorial] if col_editorial else df.iloc[:, 5]
-            
-            if col_estado:
-                df_limpio["Estado"] = df[col_estado].fillna("Disponible").apply(
-                    lambda x: "🟢 Disponible" if str(x).strip().lower() == "disponible" else "🔴 En Consulta"
-                )
-            else:
-                df_limpio["Estado"] = "🟢 Disponible"
-                
-            df_limpio = df_limpio.fillna("-").astype(str).replace(["nan", "NaN", "None", "<NA>", "No especificado", ""], "-")
-            df_limpio = df_limpio[~df_limpio["Título del Libro"].str.startswith("LIB-")].reset_index(drop=True)
-            df_limpio = df_limpio[df_limpio["Título del Libro"].str.strip() != "-"].reset_index(drop=True)
-            
-            df_limpio.insert(0, "N°", range(1, len(df_limpio) + 1))
-            
-            return df_limpio
-        except Exception as e:
-            st.error(f"Error al procesar el catálogo: {e}")
-            return pd.DataFrame()
-    else:
-        st.error("⚠️ El catálogo bibliográfico no está disponible momentáneamente.")
-        return pd.DataFrame()
+            df_h = pd.read_excel(FILE_HISTORICO)
+            if not df_h.empty and "Estado" in df_h.columns and "Título del Libro" in df_h.columns:
+                prestados = df_h[df_h["Estado"] == "En Préstamo"]["Título del Libro"].str.strip().tolist()
+                return set(prestados)
+        except Exception:
+            pass
+    return set()
 
-df_cat = cargar_catalogo_publico()
+df_libros = cargar_inventario_definitivo()
+libros_prestados_set = obtener_prestamos_activos()
 
-# Métrica única de total de títulos
-st.metric("Total de Títulos en Acervo", f"{len(df_cat):,}")
+tot_libros = len(df_libros)
+cant_prestados = len(libros_prestados_set)
+lib_disponibles = max(0, tot_libros - cant_prestados)
 
-st.markdown("---")
-
-# Buscador y Filtro por Categoría
-col_s1, col_s2 = st.columns([2, 1])
-with col_s1:
-    busqueda = st.text_input("🔍 Búsqueda general (Título, Autor, Editorial)")
-with col_s2:
-    if "Categoría / Género" in df_cat.columns and len(df_cat) > 0:
-        cat_unicas = sorted([
-            str(v).strip() for v in df_cat["Categoría / Género"].unique() 
-            if str(v).strip() not in ["", "-", "nan", "NaN", "None"]
-        ])
-        cat_list = ["Todas las Categorías / Géneros"] + cat_unicas
-    else:
-        cat_list = ["Todas las Categorías / Géneros"]
-        
-    categoria_sel = st.selectbox("Filtrar por Categoría o Género", cat_list)
-
-df_filtrado = df_cat.copy()
-
-if categoria_sel != "Todas las Categorías / Géneros" and len(df_filtrado) > 0:
-    df_filtrado = df_filtrado[df_filtrado["Categoría / Género"].str.strip() == categoria_sel]
-
-if busqueda and len(df_filtrado) > 0:
-    term_busqueda = quitar_tildes(busqueda)
-    mask = df_filtrado.apply(
-        lambda row: row.astype(str).apply(lambda val: term_busqueda in quitar_tildes(val)).any(),
-        axis=1
+# Actualizar la columna Estado para el público en tiempo real
+if not df_libros.empty:
+    df_libros["Estado"] = df_libros["Título del Libro"].apply(
+        lambda t: "En Préstamo" if str(t).strip() in libros_prestados_set else "Disponible"
     )
-    df_filtrado = df_filtrado[mask]
 
-st.write(f"Mostrando **{len(df_filtrado):,}** libros.")
+# --- TARJETAS DE MÉTRICAS VISIBLES EN PANTALLA PRINCIPAL ---
+m1, m2, m3 = st.columns(3)
+with m1:
+    st.metric("Total de Títulos en Acervo", f"{tot_libros:,}")
+with m2:
+    st.metric("Libros Disponibles", f"{lib_disponibles:,}")
+with m3:
+    st.metric("Libros en Préstamo", f"{cant_prestados}")
 
-st.dataframe(
-    df_filtrado, 
-    use_container_width=True, 
-    height=500, 
-    hide_index=True,
-    column_config={
-        "N°": st.column_config.NumberColumn("N°", width="small"),
-        "Título del Libro": st.column_config.TextColumn("Título del Libro", width="large"),
-        "Autor(es)": st.column_config.TextColumn("Autor(es)", width="medium"),
-        "Categoría / Género": st.column_config.TextColumn("Categoría / Género", width="medium"),
-        "Editorial": st.column_config.TextColumn("Editorial", width="small"),
-        "Estado": st.column_config.TextColumn("Estado", width="small")
-    }
-)
+st.markdown("<br>", unsafe_allow_html=True)
+st.subheader("🔍 Catálogo General de Consultas (Ubicación de Libros en Estantes)")
+
+if not df_libros.empty:
+    busqueda = st.text_input(
+        "🔎 Buscar por Título, Autor, Colección, Editorial, Categoría o Código:",
+        placeholder="Ej: Guerra, Alcibiades, Ensayo, LIB-LIT-006..."
+    )
+    
+    cols_mostrar = ['Código', 'Título del Libro', 'Autor', 'Colección', 'Tomo', 'Editorial', 'Categoría', 'Estado', 'Ubicación']
+    df_publico = df_libros[[c for c in cols_mostrar if c in df_libros.columns]]
+    
+    if busqueda.strip():
+        b_norm = quitar_tildes(busqueda.strip())
+        mask = df_publico.apply(
+            lambda row: any(b_norm in quitar_tildes(str(val)) for val in row.values),
+            axis=1
+        )
+        df_filtrado = df_publico[mask]
+        st.caption(f"Se encontraron **{len(df_filtrado)}** resultado(s) para la búsqueda: *\"{busqueda}\"*")
+        st.dataframe(df_filtrado, use_container_width=True, height=480, hide_index=True)
+    else:
+        st.caption(f"Mostrando el acervo completo (**{tot_libros:,}** libros). Use el campo superior para filtrar.")
+        st.dataframe(df_publico, use_container_width=True, height=520, hide_index=True)
+else:
+    st.warning("No se pudo cargar la base de inventario del catálogo.")
