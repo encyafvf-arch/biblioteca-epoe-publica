@@ -9,48 +9,41 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilos CSS con alineación forzada para simetría absoluta
+# Estilos formales de alto contraste
 st.markdown("""
 <style>
+    .header-block {
+        text-align: center;
+        margin-top: 10px;
+        margin-bottom: 25px;
+    }
     .main-header { 
-        font-size: 1.9rem; 
+        font-size: 2rem; 
         color: #FFFFFF !important; 
         font-weight: 800; 
         text-align: center; 
-        line-height: 1.2;
+        line-height: 1.25;
         font-family: 'Arial', sans-serif;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 1px;
+        margin-top: 15px;
     }
     .sub-header { 
-        font-size: 1.1rem; 
+        font-size: 1.15rem; 
         color: #D69E2E !important; 
         text-align: center; 
         font-weight: 600;
-        margin-top: 6px;
-        margin-bottom: 10px;
+        margin-top: 8px;
     }
-    
-    /* Forzar alineación a la derecha en la columna izquierda (CIMEE) */
-    div[data-testid="column"]:nth-of-type(1) div[data-testid="stImage"] {
-        display: flex;
-        justify-content: flex-end;
-    }
-    
-    /* Forzar alineación a la izquierda en la columna derecha (EPOE) */
-    div[data-testid="column"]:nth-of-type(3) div[data-testid="stImage"] {
-        display: flex;
-        justify-content: flex-start;
-    }
-
     div[data-testid="stImage"] > img {
-        height: auto;
-        object-fit: contain;
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Buscar escudos en carpeta
+# Buscar escudo de la EPOE
 def obtener_escudo(nombre_base):
     if os.path.exists("."):
         for f in os.listdir("."):
@@ -58,23 +51,20 @@ def obtener_escudo(nombre_base):
                 return f
     return None
 
-img_cimee = obtener_escudo("escudo_cimee.png")
 img_epoe = obtener_escudo("escudo_epoe.png")
 
-# Proporciones reducidas [2, 5, 2] para acercar las columnas laterales al centro
-col_e1, col_t, col_e2 = st.columns([2, 5, 2])
+# Encabezado Vertical Centrado
+if img_epoe:
+    col_izq, col_centro, col_der = st.columns([1, 2, 1])
+    with col_centro:
+        st.image(img_epoe, width=125)
 
-with col_e1:
-    if img_cimee:
-        st.image(img_cimee, width=105)
-
-with col_t:
-    st.markdown('<div class="main-header">ESCUELA DE PERFECCIONAMIENTO DE OFICIALES DEL EJÉRCITO</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">CONSULTA PÚBLICA DE CATÁLOGO BIBLIOGRÁFICO</div>', unsafe_allow_html=True)
-
-with col_e2:
-    if img_epoe:
-        st.image(img_epoe, width=105)
+st.markdown("""
+<div class="header-block">
+    <div class="main-header">ESCUELA DE PERFECCIONAMIENTO DE OFICIALES DEL EJÉRCITO</div>
+    <div class="sub-header">CONSULTA PÚBLICA DE CATÁLOGO BIBLIOGRÁFICO</div>
+</div>
+""", unsafe_allow_html=True)
 
 FILE_INVENTARIO = "inventario_libros-FABI.xlsx"
 
@@ -152,7 +142,7 @@ m2.metric("Títulos Disponibles para Consulta", f"{disponibles_count:,}")
 
 st.markdown("---")
 
-# Buscador y Filtro
+# Buscador y Filtro por Categoría
 col_s1, col_s2 = st.columns([2, 1])
 with col_s1:
     busqueda = st.text_input("🔍 Búsqueda general (Título, Autor, Editorial)")
