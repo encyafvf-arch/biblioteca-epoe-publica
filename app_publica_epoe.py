@@ -30,44 +30,52 @@ def quitar_tildes(texto):
 def cargar_catalogo_publico():
     if os.path.exists(FILE_INVENTARIO):
         try:
-            df = pd.read_excel(FILE_INVENTARIO, sheet_name="Registro de Libros", header=2)
-            df.columns = df.columns.str.strip()
+            # Leer el Excel buscando la fila de encabezados
+            df_raw = pd.read_excel(FILE_INVENTARIO, sheet_name="Registro de Libros", header=None)
             
-            # Crear columna de Estado Público
-            if "Estado" in df.columns:
-                df["Estado Público"] = df["Estado"].fillna("Disponible").apply(
-                    lambda x: "🟢 Disponible" if str(x).strip().lower() == "disponible" else "🔴 En Consulta / Prestado"
+            header_row = 0
+            for idx, row in df_raw.iterrows():
+                row_str = row.astype(str).str.lower().to_list()
+                if any("titulo" in item or "título" in item for item in row_str):
+                    header_row = idx
+                    break
+            
+            df = pd.read_excel(FILE_INVENTARIO, sheet_name="Registro de Libros", header=header_row)
+            df.columns = df.columns.astype(str).str.strip()
+            
+            # Buscar columnas clave en el Excel original
+            col_titulo = next((c for c in df.columns if "titulo" in c.lower() or "título" in c.lower()), None)
+            col_autor = next((c for c in df.columns if "autor" in c.lower()), None)
+            col_tema = next((c for c in df.columns if "categor" in c.lower() or "tema" in c.lower()), None)
+            col_editorial = next((c for c in df.columns if "editor" in c.lower()), None)
+            col_estado = next((c for c in df.columns if "estado" in c.lower()), None)
+            
+            # Crear DataFrame limpio con las columnas seleccionadas
+            df_limpio = pd.DataFrame()
+            
+            df_limpio["Título del Libro"] = df[col_titulo] if col_titulo else df.iloc[:, 1]
+            df_limpio["Autor(es)"] = df[col_autor] if col_autor else "No especificado"
+            df_limpio["Categoría / Tema"] = df[col_tema] if col_tema else "General"
+            df_limpio["Editorial"] = df[col_editorial] if col_editorial else "-"
+            
+            # Estado público amigable
+            if col_estado:
+                df_limpio["Estado"] = df[col_estado].fillna("Disponible").apply(
+                    lambda x: "🟢 Disponible" if str(x).strip().lower() == "disponible" else "🔴 En Consulta"
                 )
-                df = df.drop(columns=["Estado"], errors="ignore")
             else:
-                df["Estado Público"] = "🟢 Disponible"
-            
-            # Lista explícita de columnas a mostrar al público
-            columnas_deseadas = [
-                'Código Topográfico / ID', 
-                'Título del Libro', 
-                'Autor(es)', 
-                'Categoría / Tema', 
-                'Editorial', 
-                'Ubicación en Estante', 
-                'Estado Público'
-            ]
-            
-            # Filtrar solo las columnas que existan en el Excel
-            cols_finales = [c for c in columnas_deseadas if c in df.columns]
-            
-            # Si por alguna razón no detectó los nombres exactos, tomar todas las columnas de Excel
-            if len(cols_finales) <= 1:
-                cols_finales = list(df.columns)
+                df_limpio["Estado"] = "🟢 Disponible"
                 
-            df_publico = df[cols_finales].copy()
-            df_publico = df_publico.reset_index(drop=True)
-            df_publico.columns = [str(c) for c in df_publico.columns]
-            df_publico = df_publico.fillna("").astype(str).replace(["nan", "NaN", "None"], "")
+            # Limpieza de valores nulos
+            df_limpio = df_limpio.fillna("").astype(str).replace(["nan", "NaN", "None"], "")
+            df_limpio = df_limpio[df_limpio["Título del Libro"].str.strip() != ""].reset_index(drop=True)
             
-            return df_publico
+            # Agregar Número de Orden limpio (1, 2, 3...)
+            df_limpio.insert(0, "N°", range(1, len(df_limpio) + 1))
+            
+            return df_limpio
         except Exception as e:
-            st.error(f"Error al cargar el catálogo: {e}")
+            st.error(f"Error al procesar el catálogo: {e}")
             return pd.DataFrame()
     else:
         st.error("⚠️ El catálogo bibliográfico no está disponible momentáneamente.")
@@ -75,29 +83,28 @@ def cargar_catalogo_publico():
 
 df_cat = cargar_catalogo_publico()
 
-# Métricas públicas
+# Métricas públicas de arriba
 m1, m2 = st.columns(2)
 m1.metric("Total de Títulos en Acervo", f"{len(df_cat):,}")
-disponibles_count = len(df_cat[df_cat["Estado Público"] == "🟢 Disponible"]) if "Estado Público" in df_cat.columns else 0
+disponibles_count = len(df_cat[df_cat["Estado"] == "🟢 Disponible"]) if "Estado" in df_cat.columns else 0
 m2.metric("Títulos Disponibles para Consulta", f"{disponibles_count:,}")
 
 st.markdown("---")
 
-# Buscador y Filtros
+# Buscador y Filtro por Categoría
 col_s1, col_s2 = st.columns([2, 1])
 with col_s1:
-    busqueda = st.text_input("🔍 Buscar por Título, Código, Autor o Editorial")
+    busqueda = st.text_input("🔍 Buscar por Título, Autor o Editorial")
 with col_s2:
-    col_categoria = "Categoría / Tema" if "Categoría / Tema" in df_cat.columns else df_cat.columns[0]
-    cat_list = ["Todas"] + list(df_cat[col_categoria].unique()) if col_categoria in df_cat.columns else ["Todas"]
+    cat_list = ["Todas"] + sorted([c for c in df_cat["Categoría / Tema"].unique() if c]) if "Categoría / Tema" in df_cat.columns else ["Todas"]
     categoria_sel = st.selectbox("Filtrar por Categoría / Tema", cat_list)
 
 df_filtrado = df_cat.copy()
 
-if categoria_sel != "Todas" and col_categoria in df_filtrado.columns:
-    df_filtrado = df_filtrado[df_filtrado[col_categoria] == categoria_sel]
+if categoria_sel != "Todas":
+    df_filtrado = df_filtrado[df_filtrado["Categoría / Tema"] == categoria_sel]
 
-# Búsqueda flexible (sin importar tildes)
+# Búsqueda inteligente ignorando tildes y mayúsculas
 if busqueda:
     term_busqueda = quitar_tildes(busqueda)
     mask = df_filtrado.apply(
@@ -108,5 +115,18 @@ if busqueda:
 
 st.write(f"Mostrando **{len(df_filtrado):,}** libros.")
 
-# Tabla con todas las columnas
-st.dataframe(df_filtrado, use_container_width=True, height=500, hide_index=True)
+# Tabla interactiva simplificada
+st.dataframe(
+    df_filtrado, 
+    use_container_width=True, 
+    height=500, 
+    hide_index=True,
+    column_config={
+        "N°": st.column_config.NumberColumn("N°", width="small"),
+        "Título del Libro": st.column_config.TextColumn("Título del Libro", width="large"),
+        "Autor(es)": st.column_config.TextColumn("Autor(es)", width="medium"),
+        "Categoría / Tema": st.column_config.TextColumn("Categoría / Tema", width="medium"),
+        "Editorial": st.column_config.TextColumn("Editorial", width="small"),
+        "Estado": st.column_config.TextColumn("Estado", width="small")
+    }
+)
