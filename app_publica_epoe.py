@@ -9,36 +9,48 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilos formales
+# Estilos CSS con alineación forzada para simetría absoluta
 st.markdown("""
 <style>
     .main-header { 
-        font-size: 2rem; 
+        font-size: 1.9rem; 
         color: #FFFFFF !important; 
         font-weight: 800; 
         text-align: center; 
         line-height: 1.2;
         font-family: 'Arial', sans-serif;
         text-transform: uppercase;
-        letter-spacing: 1px;
+        letter-spacing: 0.5px;
     }
     .sub-header { 
-        font-size: 1.15rem; 
+        font-size: 1.1rem; 
         color: #D69E2E !important; 
         text-align: center; 
         font-weight: 600;
-        margin-top: 8px;
-        margin-bottom: 20px;
+        margin-top: 6px;
+        margin-bottom: 10px;
     }
+    
+    /* Forzar alineación a la derecha en la columna izquierda (CIMEE) */
+    div[data-testid="column"]:nth-of-type(1) div[data-testid="stImage"] {
+        display: flex;
+        justify-content: flex-end;
+    }
+    
+    /* Forzar alineación a la izquierda en la columna derecha (EPOE) */
+    div[data-testid="column"]:nth-of-type(3) div[data-testid="stImage"] {
+        display: flex;
+        justify-content: flex-start;
+    }
+
     div[data-testid="stImage"] > img {
-        display: block;
-        margin-left: auto;
-        margin-right: auto;
+        height: auto;
+        object-fit: contain;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Cargar escudos garantizados usando Streamlit nativo
+# Buscar escudos en carpeta
 def obtener_escudo(nombre_base):
     if os.path.exists("."):
         for f in os.listdir("."):
@@ -49,12 +61,12 @@ def obtener_escudo(nombre_base):
 img_cimee = obtener_escudo("escudo_cimee.png")
 img_epoe = obtener_escudo("escudo_epoe.png")
 
-# Encabezado simétrico con st.image
-col_e1, col_t, col_e2 = st.columns([1.2, 5, 1.2])
+# Proporciones reducidas [2, 5, 2] para acercar las columnas laterales al centro
+col_e1, col_t, col_e2 = st.columns([2, 5, 2])
 
 with col_e1:
     if img_cimee:
-        st.image(img_cimee, width=110)
+        st.image(img_cimee, width=105)
 
 with col_t:
     st.markdown('<div class="main-header">ESCUELA DE PERFECCIONAMIENTO DE OFICIALES DEL EJÉRCITO</div>', unsafe_allow_html=True)
@@ -62,7 +74,7 @@ with col_t:
 
 with col_e2:
     if img_epoe:
-        st.image(img_epoe, width=110)
+        st.image(img_epoe, width=105)
 
 FILE_INVENTARIO = "inventario_libros-FABI.xlsx"
 
@@ -77,7 +89,6 @@ def cargar_catalogo_publico():
         try:
             df_raw = pd.read_excel(FILE_INVENTARIO, sheet_name="Registro de Libros", header=None)
             
-            # Detectar fila de encabezados
             header_row = 2
             for idx, row in df_raw.iterrows():
                 row_str = [str(val).lower() for val in row.values if pd.notna(val)]
@@ -88,7 +99,6 @@ def cargar_catalogo_publico():
             df = pd.read_excel(FILE_INVENTARIO, sheet_name="Registro de Libros", header=header_row)
             df.columns = [str(c).strip() for c in df.columns]
             
-            # Mapeo por búsqueda exacta de palabras clave
             col_titulo = next((c for c in df.columns if any(k in c.lower() for k in ["titulo", "título"]) and "codigo" not in c.lower()), None)
             col_autor = next((c for c in df.columns if "autor" in c.lower()), None)
             col_categoria = next((c for c in df.columns if any(k in c.lower() for k in ["categor", "tema", "genero", "género"])), None)
@@ -97,9 +107,7 @@ def cargar_catalogo_publico():
             
             cols = list(df.columns)
             
-            # Respaldo de seguridad por posición real si falla la búsqueda por nombre
             if not col_titulo or "LIB-" in str(df[col_titulo].iloc[0]):
-                # Si la columna elegida tiene códigos LIB-, buscar la columna real de título
                 for c in cols:
                     val_sample = str(df[c].iloc[0]) if len(df) > 0 else ""
                     if "LIB-" not in val_sample and len(val_sample) > 5 and c != col_autor:
@@ -120,10 +128,7 @@ def cargar_catalogo_publico():
             else:
                 df_limpio["Estado"] = "🟢 Disponible"
                 
-            # Limpieza básica de celdas
             df_limpio = df_limpio.fillna("-").astype(str).replace(["nan", "NaN", "None", "<NA>", "No especificado", ""], "-")
-            
-            # Descartar filas con códigos topográficos en el título
             df_limpio = df_limpio[~df_limpio["Título del Libro"].str.startswith("LIB-")].reset_index(drop=True)
             df_limpio = df_limpio[df_limpio["Título del Libro"].str.strip() != "-"].reset_index(drop=True)
             
@@ -153,7 +158,6 @@ with col_s1:
     busqueda = st.text_input("🔍 Búsqueda general (Título, Autor, Editorial)")
 with col_s2:
     if "Categoría / Género" in df_cat.columns and len(df_cat) > 0:
-        # Extraer ÚNICAMENTE categorías y géneros reales
         cat_unicas = sorted([
             str(v).strip() for v in df_cat["Categoría / Género"].unique() 
             if str(v).strip() not in ["", "-", "nan", "NaN", "None"]
@@ -166,11 +170,9 @@ with col_s2:
 
 df_filtrado = df_cat.copy()
 
-# Aplicar filtro por categoría
 if categoria_sel != "Todas las Categorías / Géneros" and len(df_filtrado) > 0:
     df_filtrado = df_filtrado[df_filtrado["Categoría / Género"].str.strip() == categoria_sel]
 
-# Búsqueda libre
 if busqueda and len(df_filtrado) > 0:
     term_busqueda = quitar_tildes(busqueda)
     mask = df_filtrado.apply(
@@ -181,7 +183,6 @@ if busqueda and len(df_filtrado) > 0:
 
 st.write(f"Mostrando **{len(df_filtrado):,}** libros.")
 
-# Tabla interactiva ordenada
 st.dataframe(
     df_filtrado, 
     use_container_width=True, 
