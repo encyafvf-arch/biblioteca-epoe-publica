@@ -9,15 +9,43 @@ st.set_page_config(
     layout="wide"
 )
 
+# Estilos formales y legibles
 st.markdown("""
 <style>
-    .main-header { font-size: 2rem; color: #1B365D; font-weight: bold; text-align: center; }
-    .sub-header { font-size: 1rem; color: #4B6B94; text-align: center; margin-bottom: 20px; }
+    .main-header { 
+        font-size: 1.8rem; 
+        color: #1B365D; 
+        font-weight: 800; 
+        text-align: center; 
+        line-height: 1.2;
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        letter-spacing: 0.5px;
+    }
+    .sub-header { 
+        font-size: 1.1rem; 
+        color: #2C5282; 
+        text-align: center; 
+        font-weight: 600;
+        margin-top: 5px;
+        margin-bottom: 15px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-header">ESCUELA DE PERFECCIONAMIENTO DE OFICIALES DEL EJÉRCITO</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Consulta Pública de Catálogo Bibliográfico</div>', unsafe_allow_html=True)
+# Encabezado con Escudos (3 Columnas)
+col_esc1, col_texto, col_esc2 = st.columns([1, 4, 1])
+
+with col_esc1:
+    if os.path.exists("escudo_cimee.png"):
+        st.image("escudo_cimee.png", width=110)
+
+with col_texto:
+    st.markdown('<div class="main-header">ESCUELA DE PERFECCIONAMIENTO DE OFICIALES DEL EJÉRCITO</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Consulta Pública de Catálogo Bibliográfico</div>', unsafe_allow_html=True)
+
+with col_esc2:
+    if os.path.exists("escudo_epoe.png"):
+        st.image("escudo_epoe.png", width=110)
 
 FILE_INVENTARIO = "inventario_libros-FABI.xlsx"
 
@@ -30,10 +58,9 @@ def quitar_tildes(texto):
 def cargar_catalogo_publico():
     if os.path.exists(FILE_INVENTARIO):
         try:
-            # Leer el Excel convirtiendo todo a texto de forma segura
             df_raw = pd.read_excel(FILE_INVENTARIO, sheet_name="Registro de Libros", header=None)
             
-            header_row = 2  # Fila 3 del Excel por defecto
+            header_row = 2
             for idx, row in df_raw.iterrows():
                 row_str = [str(val).lower() for val in row.values if pd.notna(val)]
                 if any("titulo" in item or "título" in item for item in row_str):
@@ -43,17 +70,17 @@ def cargar_catalogo_publico():
             df = pd.read_excel(FILE_INVENTARIO, sheet_name="Registro de Libros", header=header_row)
             df.columns = [str(c).strip() for c in df.columns]
             
-            # Identificar columnas por coincidencias flexibles
-            col_titulo = next((c for c in df.columns if "titulo" in c.lower() or "título" in c.lower()), None)
+            # Mapeo flexible
+            col_titulo = next((c for c in df.columns if any(k in c.lower() for k in ["titulo", "título", "nombre", "obra"])), None)
             col_autor = next((c for c in df.columns if "autor" in c.lower()), None)
-            col_tema = next((c for c in df.columns if "categor" in c.lower() or "tema" in c.lower()), None)
+            col_tema = next((c for c in df.columns if any(k in c.lower() for k in ["tema", "categor", "genero", "género", "colecc"])), None)
             col_editorial = next((c for c in df.columns if "editor" in c.lower()), None)
             col_estado = next((c for c in df.columns if "estado" in c.lower()), None)
             
             df_limpio = pd.DataFrame()
             
-            df_limpio["Título del Libro"] = df[col_titulo] if col_titulo else df.iloc[:, 2 if len(df.columns) > 2 else 0]
-            df_limpio["Autor(es)"] = df[col_autor] if col_autor else "No especificado"
+            df_limpio["Título del Libro"] = df[col_titulo] if col_titulo else df.iloc[:, 1]
+            df_limpio["Autor(es)"] = df[col_autor] if col_autor else "-"
             df_limpio["Categoría / Tema"] = df[col_tema] if col_tema else "General"
             df_limpio["Editorial"] = df[col_editorial] if col_editorial else "-"
             
@@ -64,11 +91,9 @@ def cargar_catalogo_publico():
             else:
                 df_limpio["Estado"] = "🟢 Disponible"
                 
-            # Limpieza integral de celdas vacías
-            df_limpio = df_limpio.fillna("").astype(str).replace(["nan", "NaN", "None", "<NA>"], "")
+            df_limpio = df_limpio.fillna("").astype(str).replace(["nan", "NaN", "None", "<NA>", "No especificado"], "-")
             df_limpio = df_limpio[df_limpio["Título del Libro"].str.strip() != ""].reset_index(drop=True)
             
-            # Número de orden 1, 2, 3...
             df_limpio.insert(0, "N°", range(1, len(df_limpio) + 1))
             
             return df_limpio
@@ -81,7 +106,7 @@ def cargar_catalogo_publico():
 
 df_cat = cargar_catalogo_publico()
 
-# Métricas públicas
+# Métricas superiores
 m1, m2 = st.columns(2)
 m1.metric("Total de Títulos en Acervo", f"{len(df_cat):,}")
 disponibles_count = len(df_cat[df_cat["Estado"] == "🟢 Disponible"]) if "Estado" in df_cat.columns and len(df_cat) > 0 else 0
@@ -95,7 +120,7 @@ with col_s1:
     busqueda = st.text_input("🔍 Buscar por Título, Autor o Editorial")
 with col_s2:
     if "Categoría / Tema" in df_cat.columns and len(df_cat) > 0:
-        cat_list = ["Todas"] + sorted([c for c in df_cat["Categoría / Tema"].unique() if c])
+        cat_list = ["Todas"] + sorted([c for c in df_cat["Categoría / Tema"].unique() if c and c != "-"])
     else:
         cat_list = ["Todas"]
     categoria_sel = st.selectbox("Filtrar por Categoría / Tema", cat_list)
