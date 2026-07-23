@@ -20,14 +20,14 @@ def obtener_escudo(nombre_base):
 
 img_epoe = obtener_escudo("escudo_epoe.png")
 
-# Convertir imagen a base64 para renderizar centrado nativo perfecto
+# Convertir imagen a base64 para centrado nativo impecable
 img_html = ""
 if img_epoe:
     with open(img_epoe, "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode()
         img_html = f'<img src="data:image/png;base64,{encoded_string}" style="width: 120px; height: auto; display: block; margin: 0 auto 15px auto;">'
 
-# Estilos formales con centrado absoluto
+# Estilos formales
 st.markdown("""
 <style>
     .header-box {
@@ -56,7 +56,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Encabezado 100% centrado en un único bloque
+# Encabezado 100% centrado
 st.markdown(f"""
 <div class="header-box">
     {img_html}
@@ -133,11 +133,8 @@ def cargar_catalogo_publico():
 
 df_cat = cargar_catalogo_publico()
 
-# Métricas
-m1, m2 = st.columns(2)
-m1.metric("Total de Títulos en Acervo", f"{len(df_cat):,}")
-disponibles_count = len(df_cat[df_cat["Estado"] == "🟢 Disponible"]) if "Estado" in df_cat.columns and len(df_cat) > 0 else 0
-m2.metric("Títulos Disponibles para Consulta", f"{disponibles_count:,}")
+# Métrica única de total de títulos
+st.metric("Total de Títulos en Acervo", f"{len(df_cat):,}")
 
 st.markdown("---")
 
