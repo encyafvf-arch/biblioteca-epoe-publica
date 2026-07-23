@@ -9,7 +9,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilos formales y legibles
+# Estilos formales
 st.markdown("""
 <style>
     .main-header { 
@@ -19,7 +19,6 @@ st.markdown("""
         text-align: center; 
         line-height: 1.2;
         font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        letter-spacing: 0.5px;
     }
     .sub-header { 
         font-size: 1.1rem; 
@@ -32,7 +31,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Encabezado con Escudos (3 Columnas)
+# Encabezado con Escudos
 col_esc1, col_texto, col_esc2 = st.columns([1, 4, 1])
 
 with col_esc1:
@@ -54,29 +53,53 @@ def quitar_tildes(texto):
         texto = str(texto)
     return ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn').lower()
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=300)
 def cargar_catalogo_publico():
     if os.path.exists(FILE_INVENTARIO):
         try:
+            # Leer el archivo Excel completo
             df_raw = pd.read_excel(FILE_INVENTARIO, sheet_name="Registro de Libros", header=None)
             
+            # Detectar fila de encabezados
             header_row = 2
             for idx, row in df_raw.iterrows():
                 row_str = [str(val).lower() for val in row.values if pd.notna(val)]
-                if any("titulo" in item or "título" in item for item in row_str):
+                if any("titulo" in item or "título" in item or "autor" in item for item in row_str):
                     header_row = idx
                     break
             
             df = pd.read_excel(FILE_INVENTARIO, sheet_name="Registro de Libros", header=header_row)
             df.columns = [str(c).strip() for c in df.columns]
             
-            # Mapeo flexible
-            col_titulo = next((c for c in df.columns if any(k in c.lower() for k in ["titulo", "título", "nombre", "obra"])), None)
+            # Mapeo inteligente descartando códigos de la columna 'Título'
+            col_titulo = None
+            for c in df.columns:
+                c_low = c.lower()
+                if ("titulo" in c_low or "título" in c_low or "nombre" in c_low) and "codigo" not in c_low:
+                    col_titulo = c
+                    break
+            
             col_autor = next((c for c in df.columns if "autor" in c.lower()), None)
-            col_tema = next((c for c in df.columns if any(k in c.lower() for k in ["tema", "categor", "genero", "género", "colecc"])), None)
+            col_tema = next((c for c in df.columns if any(k in c.lower() for k in ["tema", "categor", "genero", "género", "colecc", "serie"])), None)
             col_editorial = next((c for c in df.columns if "editor" in c.lower()), None)
             col_estado = next((c for c in df.columns if "estado" in c.lower()), None)
             
+            # Si no encontró por nombre, usar posiciones probables del Excel
+            cols_disponibles = list(df.columns)
+            if not col_titulo and len(cols_disponibles) > 1:
+                # Si la col 1 es código (LIB-...), tomar la col 2 para el título real
+                primer_val = str(df.iloc[0, 1]) if len(df) > 0 else ""
+                col_titulo = cols_disponibles[2] if "LIB-" in primer_val and len(cols_disponibles) > 2 else cols_disponibles[1]
+                
+            if not col_autor and len(cols_disponibles) > 2:
+                col_autor = cols_disponibles[2] if col_titulo != cols_disponibles[2] else cols_disponibles[3]
+                
+            if not col_tema and len(cols_disponibles) > 3:
+                col_tema = cols_disponibles[3]
+                
+            if not col_editorial and len(cols_disponibles) > 4:
+                col_editorial = cols_disponibles[4]
+
             df_limpio = pd.DataFrame()
             
             df_limpio["Título del Libro"] = df[col_titulo] if col_titulo else df.iloc[:, 1]
@@ -91,8 +114,11 @@ def cargar_catalogo_publico():
             else:
                 df_limpio["Estado"] = "🟢 Disponible"
                 
-            df_limpio = df_limpio.fillna("").astype(str).replace(["nan", "NaN", "None", "<NA>", "No especificado"], "-")
-            df_limpio = df_limpio[df_limpio["Título del Libro"].str.strip() != ""].reset_index(drop=True)
+            # Limpieza general
+            df_limpio = df_limpio.fillna("-").astype(str).replace(["nan", "NaN", "None", "<NA>", "No especificado", ""], "-")
+            
+            # Filtro para que el Título sea válido
+            df_limpio = df_limpio[df_limpio["Título del Libro"].str.strip() != "-"].reset_index(drop=True)
             
             df_limpio.insert(0, "N°", range(1, len(df_limpio) + 1))
             
@@ -106,7 +132,7 @@ def cargar_catalogo_publico():
 
 df_cat = cargar_catalogo_publico()
 
-# Métricas superiores
+# Métricas
 m1, m2 = st.columns(2)
 m1.metric("Total de Títulos en Acervo", f"{len(df_cat):,}")
 disponibles_count = len(df_cat[df_cat["Estado"] == "🟢 Disponible"]) if "Estado" in df_cat.columns and len(df_cat) > 0 else 0
@@ -114,7 +140,7 @@ m2.metric("Títulos Disponibles para Consulta", f"{disponibles_count:,}")
 
 st.markdown("---")
 
-# Buscador y Filtro por Categoría
+# Buscador y Filtro
 col_s1, col_s2 = st.columns([2, 1])
 with col_s1:
     busqueda = st.text_input("🔍 Buscar por Título, Autor o Editorial")
@@ -140,7 +166,7 @@ if busqueda and len(df_filtrado) > 0:
 
 st.write(f"Mostrando **{len(df_filtrado):,}** libros.")
 
-# Tabla limpia
+# Tabla
 st.dataframe(
     df_filtrado, 
     use_container_width=True, 
