@@ -9,7 +9,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilos CSS con alto contraste y disimulo de bordes en imágenes
+# Estilos formales de alto contraste y centrado de imágenes
 st.markdown("""
 <style>
     .main-header { 
@@ -30,10 +30,7 @@ st.markdown("""
         margin-top: 8px;
         margin-bottom: 20px;
     }
-    /* Redondear y suavizar bordes blancos de los escudos */
     div[data-testid="stImage"] > img {
-        border-radius: 12px;
-        box-shadow: 0px 4px 10px rgba(0,0,0,0.3);
         display: block;
         margin-left: auto;
         margin-right: auto;
@@ -41,20 +38,30 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Encabezado perfectamente centrado y simétrico
+# Buscar imágenes de escudos sin importar diferencias de mayúsculas/minúsculas
+def buscar_imagen(nombre_base):
+    for f in os.listdir("."):
+        if f.lower() == nombre_base.lower():
+            return f
+    return None
+
+img_cimee = buscar_imagen("escudo_cimee.png")
+img_epoe = buscar_imagen("escudo_epoe.png")
+
+# Encabezado perfectamente simétrico
 col_esc1, col_texto, col_esc2 = st.columns([1.2, 5, 1.2])
 
 with col_esc1:
-    if os.path.exists("escudo_cimee.png"):
-        st.image("escudo_cimee.png", width=120)
+    if img_cimee:
+        st.image(img_cimee, width=120)
 
 with col_texto:
     st.markdown('<div class="main-header">ESCUELA DE PERFECCIONAMIENTO DE OFICIALES DEL EJÉRCITO</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">CONSULTA PÚBLICA DE CATÁLOGO BIBLIOGRÁFICO</div>', unsafe_allow_html=True)
 
 with col_esc2:
-    if os.path.exists("escudo_epoe.png"):
-        st.image("escudo_epoe.png", width=120)
+    if img_epoe:
+        st.image(img_epoe, width=120)
 
 FILE_INVENTARIO = "inventario_libros-FABI.xlsx"
 
@@ -69,6 +76,7 @@ def cargar_catalogo_publico():
         try:
             df_raw = pd.read_excel(FILE_INVENTARIO, sheet_name="Registro de Libros", header=None)
             
+            # Buscar la fila de encabezados reales
             header_row = 2
             for idx, row in df_raw.iterrows():
                 row_str = [str(val).lower() for val in row.values if pd.notna(val)]
@@ -79,7 +87,7 @@ def cargar_catalogo_publico():
             df = pd.read_excel(FILE_INVENTARIO, sheet_name="Registro de Libros", header=header_row)
             df.columns = [str(c).strip() for c in df.columns]
             
-            # Detección de columnas
+            # Detección inteligente de columnas
             col_titulo = next((c for c in df.columns if any(k in c.lower() for k in ["titulo", "título", "nombre", "obra"]) and "codigo" not in c.lower()), None)
             col_autor = next((c for c in df.columns if "autor" in c.lower()), None)
             col_tema = next((c for c in df.columns if any(k in c.lower() for k in ["categor", "tema", "genero", "género", "colecc", "serie"])), None)
@@ -114,6 +122,7 @@ def cargar_catalogo_publico():
             else:
                 df_limpio["Estado"] = "🟢 Disponible"
                 
+            # Limpieza básica de datos
             df_limpio = df_limpio.fillna("-").astype(str).replace(["nan", "NaN", "None", "<NA>", "No especificado", ""], "-")
             df_limpio = df_limpio[df_limpio["Título del Libro"].str.strip() != "-"].reset_index(drop=True)
             df_limpio.insert(0, "N°", range(1, len(df_limpio) + 1))
@@ -128,7 +137,7 @@ def cargar_catalogo_publico():
 
 df_cat = cargar_catalogo_publico()
 
-# Métricas superiores
+# Métricas públicas
 m1, m2 = st.columns(2)
 m1.metric("Total de Títulos en Acervo", f"{len(df_cat):,}")
 disponibles_count = len(df_cat[df_cat["Estado"] == "🟢 Disponible"]) if "Estado" in df_cat.columns and len(df_cat) > 0 else 0
@@ -136,23 +145,27 @@ m2.metric("Títulos Disponibles para Consulta", f"{disponibles_count:,}")
 
 st.markdown("---")
 
-# Filtros avanzados y lógicos
+# Buscador y Filtro por Categorías / Géneros
 col_s1, col_s2 = st.columns([2, 1])
 with col_s1:
     busqueda = st.text_input("🔍 Búsqueda general (Título, Autor, Editorial)")
 with col_s2:
     if "Categoría / Género" in df_cat.columns and len(df_cat) > 0:
-        categorias = sorted([c for c in df_cat["Categoría / Género"].unique() if c and c != "-"])
-        cat_list = ["Todas las Categorías / Géneros"] + categorias
+        # Extrae todas las opciones únicas contenidas en la columna del Excel
+        opciones_unicas = sorted([str(val).strip() for val in df_cat["Categoría / Género"].unique() if str(val).strip() not in ["", "-", "nan", "NaN"]])
+        cat_list = ["Todas las Categorías / Géneros"] + opciones_unicas
     else:
         cat_list = ["Todas las Categorías / Géneros"]
+        
     categoria_sel = st.selectbox("Filtrar por Categoría o Género", cat_list)
 
 df_filtrado = df_cat.copy()
 
+# Aplicar filtro por Categoría / Género
 if categoria_sel != "Todas las Categorías / Géneros" and len(df_filtrado) > 0:
-    df_filtrado = df_filtrado[df_filtrado["Categoría / Género"] == categoria_sel]
+    df_filtrado = df_filtrado[df_filtrado["Categoría / Género"].str.strip() == categoria_sel]
 
+# Búsqueda por texto (insensible a tildes y mayúsculas)
 if busqueda and len(df_filtrado) > 0:
     term_busqueda = quitar_tildes(busqueda)
     mask = df_filtrado.apply(
@@ -163,6 +176,7 @@ if busqueda and len(df_filtrado) > 0:
 
 st.write(f"Mostrando **{len(df_filtrado):,}** libros.")
 
+# Visualización de la tabla
 st.dataframe(
     df_filtrado, 
     use_container_width=True, 
